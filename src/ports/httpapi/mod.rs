@@ -129,14 +129,18 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::{
+        dependency_injection::{self, Container, DC},
+        id_provider::FakeIDProvide,
+        storage::CreateShortUrlRepository,
+    };
     use actix_web::{http::StatusCode, test};
     use dashmap::DashMap;
     use std::sync::Arc;
-    use crate::{dependency_injection::{self, Container, DC}, id_provider::FakeIDProvide, storage::CreateShortUrlRepository
-    };
-    use super::*;
 
-    fn get_fouter_with_mock_container<I, R, Q>() -> Arc<Container<FakeIDProvide, StorageRepository, StorageRepository>>
+    fn get_fouter_with_mock_container<I, R, Q>(
+    ) -> Arc<Container<FakeIDProvide, StorageRepository, StorageRepository>>
     where
         I: IDProvider + Send + Sync + 'static,
         R: CreateShortUrlRepository + Send + Sync + 'static,
@@ -147,10 +151,14 @@ mod tests {
         store.insert("test-id_2".to_owned(), "test_url_2".to_owned());
         let repo = StorageRepository::new(store);
 
-        let container = <dependency_injection::Container<FakeIDProvide, StorageRepository, StorageRepository>>::new(
+        let container = <dependency_injection::Container<
+            FakeIDProvide,
+            StorageRepository,
+            StorageRepository,
+        >>::new(
             FakeIDProvide::new("test-id_1".to_owned()),
             repo.clone(),
-            repo
+            repo,
         );
 
         Arc::new(container)
@@ -159,9 +167,14 @@ mod tests {
     #[actix_rt::test]
     async fn tes_get_full_url_success() {
         //given
-        let container = get_fouter_with_mock_container::<FakeIDProvide, StorageRepository, StorageRepository>();
+        let container =
+            get_fouter_with_mock_container::<FakeIDProvide, StorageRepository, StorageRepository>();
 
-        let mut app = test::init_service(App::new().app_data(web::Data::new(container)).route("/{id}", web::get().to(get_full_url::<FakeIDProvide, StorageRepository, StorageRepository>))).await;
+        let mut app = test::init_service(App::new().app_data(web::Data::new(container)).route(
+            "/{id}",
+            web::get().to(get_full_url::<FakeIDProvide, StorageRepository, StorageRepository>),
+        ))
+        .await;
         let req = test::TestRequest::get().uri("/test-id_1").to_request();
         let resp = test::call_service(&mut app, req).await;
         assert!(resp.status().is_success());
@@ -170,14 +183,60 @@ mod tests {
     #[actix_rt::test]
     async fn tes_shorten_url_success() {
         //given
-        let container = get_fouter_with_mock_container::<FakeIDProvide, StorageRepository, StorageRepository>();
+        let container =
+            get_fouter_with_mock_container::<FakeIDProvide, StorageRepository, StorageRepository>();
         let json = CreateShortUrlRequest {
             url: "test_url_1".to_owned(),
         };
-        
-        let mut app = test::init_service(App::new().app_data(web::Data::new(container)).route("/", web::post().to(shorten_url::<FakeIDProvide, StorageRepository, StorageRepository>))).await;
-        let req = test::TestRequest::post().uri("/").set_json(json).to_request();
+
+        let mut app = test::init_service(App::new().app_data(web::Data::new(container)).route(
+            "/",
+            web::post().to(shorten_url::<FakeIDProvide, StorageRepository, StorageRepository>),
+        ))
+        .await;
+        let req = test::TestRequest::post()
+            .uri("/")
+            .set_json(json)
+            .to_request();
         let resp = test::call_service(&mut app, req).await;
         assert!(resp.status().is_success());
+    }
+
+    #[actix_rt::test]
+    async fn test_get_full_url() {
+        //given
+        let container =
+            get_fouter_with_mock_container::<FakeIDProvide, StorageRepository, StorageRepository>();
+
+        let mut app = test::init_service(App::new().app_data(web::Data::new(container)).route(
+            "/{id}",
+            web::get().to(get_full_url::<FakeIDProvide, StorageRepository, StorageRepository>),
+        ))
+        .await;
+        let req = test::TestRequest::get().uri("/test-id_1").to_request();
+        let resp: FullUrlResponse = test::call_and_read_body_json(&app, req).await;
+        assert_eq!("test_url_1".to_owned(), resp.url);
+    }
+
+    #[actix_rt::test]
+    async fn test_shorten_url() {
+        //given
+        let container =
+            get_fouter_with_mock_container::<FakeIDProvide, StorageRepository, StorageRepository>();
+        let json = CreateShortUrlRequest {
+            url: "https://yandex.ru".to_owned(),
+        };
+
+        let mut app = test::init_service(App::new().app_data(web::Data::new(container)).route(
+            "/",
+            web::post().to(shorten_url::<FakeIDProvide, StorageRepository, StorageRepository>),
+        ))
+        .await;
+        let req = test::TestRequest::post()
+            .uri("/")
+            .set_json(json)
+            .to_request();
+        let resp: ShortUrlResponse = test::call_and_read_body_json(&app, req).await;
+        assert_eq!("test-id_1", resp.url);
     }
 }
